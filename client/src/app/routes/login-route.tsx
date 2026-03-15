@@ -20,6 +20,14 @@ export function LoginPageRoute() {
             if (password) {
                 const result = await auth.login(id, password);
                 if (result.success) {
+                    // Verify the server role matches the selected portal role
+                    const actualRole = auth.userRole;
+                    if (actualRole && actualRole !== role) {
+                        auth.logout();
+                        setError(`These credentials belong to a ${actualRole.toUpperCase()} account. Please select the correct portal.`);
+                        setLoading(false);
+                        return;
+                    }
                     navigateToPortal(auth.userRole || role);
                     return;
                 }

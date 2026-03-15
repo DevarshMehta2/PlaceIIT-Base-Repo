@@ -12,6 +12,7 @@ import {
   Send, RotateCw, Clock, CircleDot, MapPin, XCircle, UserCheck, Loader2,
 } from "lucide-react";
 import { cocoApi } from "@/app/lib/api";
+import { useSocket } from "@/app/socket-context";
 import { toast } from "sonner";
 
 interface Student {
@@ -41,6 +42,7 @@ interface CoCoHomePageProps {
 }
 
 export function CoCoHomePage({ companyName, onRoundTracking }: CoCoHomePageProps) {
+  const { socket } = useSocket();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRound, setSelectedRound] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -149,6 +151,28 @@ export function CoCoHomePage({ companyName, onRoundTracking }: CoCoHomePageProps
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // ── Real-time updates ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!socket || !company.id) return;
+
+    // Join company room to receive queue events
+    socket.emit("join:company", company.id);
+
+    const handleQueueUpdate = () => fetchData();
+    const handleStatusUpdate = () => fetchData();
+
+    socket.on("queue:updated", handleQueueUpdate);
+    socket.on("status:updated", handleStatusUpdate);
+    socket.on("walkin:updated", handleQueueUpdate);
+
+    return () => {
+      socket.off("queue:updated", handleQueueUpdate);
+      socket.off("status:updated", handleStatusUpdate);
+      socket.off("walkin:updated", handleQueueUpdate);
+    };
+  }, [socket, company.id, fetchData]);
+  // ─────────────────────────────────────────────────────────────────────────
+
   const filteredStudents = students.filter((student) => {
     const matchesSearch =
       student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -167,9 +191,10 @@ export function CoCoHomePage({ companyName, onRoundTracking }: CoCoHomePageProps
       prev.map((s) => (s.id === studentId ? { ...s, status: newStatus, locationStatus: newStatus as any } : s))
     );
     try {
-      await cocoApi.updateStudentStatus({ queueId: studentId, status: newStatus });
+      await cocoApi.updateStudentStatus({ studentId, companyId: company.id, status: newStatus });
     } catch {
       toast.error("Failed to update status");
+      fetchData(); // revert optimistic update
     }
   };
 
@@ -190,7 +215,7 @@ export function CoCoHomePage({ companyName, onRoundTracking }: CoCoHomePageProps
     setIsWalkinActive(newState);
     try {
       if (company.id) {
-        await cocoApi.toggleWalkIn(company.id, { walkInOpen: newState });
+        await cocoApi.toggleWalkIn(company.id, { enabled: newState });
       }
       toast.success(newState ? "Walk-in activated" : "Walk-in deactivated");
     } catch {
@@ -204,9 +229,9 @@ export function CoCoHomePage({ companyName, onRoundTracking }: CoCoHomePageProps
     try {
       await cocoApi.addPanel({
         companyId: company.id,
-        name: panelName,
-        room: panelRoom,
-        members: panelMembers.split(",").map((m) => m.trim()).filter(Boolean),
+        panelName: panelName,
+        venue: panelRoom,
+        interviewers: panelMembers.split(",").map((m) => m.trim()).filter(Boolean),
       });
       toast.success("Panel added!");
       setPanelName("");

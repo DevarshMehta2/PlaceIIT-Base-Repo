@@ -180,8 +180,49 @@ const getUploadStatus = async (req, res) => {
   }
 };
 
+// @desc    Manually shortlist students for a company by roll numbers
+// @route   POST /api/admin/students/shortlist
+const shortlistStudents = async (req, res) => {
+  try {
+    const { companyId, rollNumbers } = req.body;
+    if (!companyId || !Array.isArray(rollNumbers) || rollNumbers.length === 0) {
+      return res.status(400).json({ message: "companyId and rollNumbers[] are required" });
+    }
+
+    const company = await Company.findById(companyId);
+    if (!company) return res.status(404).json({ message: "Company not found" });
+
+    const students = await Student.find({ rollNumber: { $in: rollNumbers } });
+    if (students.length === 0) {
+      return res.status(404).json({ message: `No students found matching the provided roll numbers` });
+    }
+
+    const studentIds = students.map((s) => s._id);
+
+    // Add students to company's shortlist (avoid duplicates)
+    await Company.findByIdAndUpdate(companyId, {
+      $addToSet: { shortlistedStudents: { $each: studentIds } },
+    });
+
+    // Add company to each student's shortlistedCompanies
+    await Student.updateMany(
+      { _id: { $in: studentIds } },
+      { $addToSet: { shortlistedCompanies: companyId } }
+    );
+
+    res.json({
+      message: `${students.length} student(s) shortlisted successfully`,
+      shortlisted: students.map((s) => ({ name: s.name, rollNumber: s.rollNumber })),
+      notFound: rollNumbers.filter((r) => !students.find((s) => s.rollNumber === r)),
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   getStats, getCompanies, addCompany, updateCompany,
   searchStudents, getCocos, assignCoco, removeCoco,
   uploadCompanyExcel, uploadShortlistExcel, uploadCocoRequirementsExcel, getUploadStatus,
+  shortlistStudents,
 };

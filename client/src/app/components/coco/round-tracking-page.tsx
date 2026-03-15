@@ -10,6 +10,7 @@ import { Label } from "@/app/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { ArrowLeft, UserPlus, Users, Clock, CheckCircle, AlertCircle, Upload, Loader2 } from "lucide-react";
 import { cocoApi } from "@/app/lib/api";
+import { useSocket } from "@/app/socket-context";
 import { toast } from "sonner";
 
 interface Student {
@@ -33,6 +34,7 @@ interface RoundTrackingPageProps {
 }
 
 export function RoundTrackingPage({ companyName, onBack }: RoundTrackingPageProps) {
+  const { socket } = useSocket();
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
   const [addMethod, setAddMethod] = useState<"manual" | "excel">("manual");
   const [loading, setLoading] = useState(true);
@@ -116,6 +118,22 @@ export function RoundTrackingPage({ companyName, onBack }: RoundTrackingPageProp
   }, [companyName]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── Real-time updates ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!socket || !companyId) return;
+    socket.emit("join:company", companyId);
+    const refresh = () => fetchData();
+    socket.on("status:updated", refresh);
+    socket.on("round:updated", refresh);
+    socket.on("queue:updated", refresh);
+    return () => {
+      socket.off("status:updated", refresh);
+      socket.off("round:updated", refresh);
+      socket.off("queue:updated", refresh);
+    };
+  }, [socket, companyId, fetchData]);
+  // ─────────────────────────────────────────────────────────────────────────
 
   const getStatusBadge = (status: string) => {
     switch (status) {

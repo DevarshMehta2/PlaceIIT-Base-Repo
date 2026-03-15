@@ -4,6 +4,7 @@ const {
   getStats, getCompanies, addCompany, updateCompany,
   searchStudents, getCocos, assignCoco, removeCoco,
   uploadCompanyExcel, uploadShortlistExcel, uploadCocoRequirementsExcel, getUploadStatus,
+  shortlistStudents,
 } = require("../controllers/admin.controller");
 const { protect } = require("../middlewares/auth.middleware");
 const { authorize } = require("../middlewares/role.middleware");
@@ -16,6 +17,7 @@ router.get("/companies", getCompanies);
 router.post("/companies", addCompany);
 router.put("/companies/:id", updateCompany);
 router.get("/students/search", searchStudents);
+router.post("/students/shortlist", shortlistStudents);
 router.get("/cocos", getCocos);
 router.post("/assign-coco", assignCoco);
 router.post("/remove-coco", removeCoco);

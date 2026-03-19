@@ -378,11 +378,6 @@ const getShortlistedStudents = async (req, res) => {
 
 // @desc    Auto allocate CoCos to companies
 // @route   POST /api/admin/auto-allocate-cocos
-// ALGORITHM:
-//   - Each CoCo is assigned EXACTLY 1 company (one-to-one).
-//   - A company may have 2+ CoCos if cocos > companies, but each coco only gets 1.
-//   - If there are more companies than cocos, some companies are left unallotted.
-//   - Returns the unallotted companies list.
 const autoAllocateCocos = async (req, res) => {
   try {
     // First, clear all existing assignments
@@ -401,35 +396,77 @@ const autoAllocateCocos = async (req, res) => {
       return res.status(400).json({ message: "No companies available for allocation" });
     }
 
-    // Shuffle cocos for random distribution
-    const shuffledCocos = [...cocos].sort(() => Math.random() - 0.5);
+    // Track global usage
+    const usedCoCos = new Set();
+    const cocoAssignments = {}; // cocoId -> array of {day, slot}
+    cocos.forEach(c => {
+      cocoAssignments[c._id.toString()] = [];
+    });
+
+    const isAssignedInSameDaySlot = (cocoId, day, slot) => {
+      const assignments = cocoAssignments[cocoId];
+      return assignments.some(a => a.day === day && a.slot === slot);
+    };
 
     const results = [];
-    const allocatedCompanies = [];
     const unallottedCompanies = [];
 
-    // Phase 1: Assign one CoCo per company (up to number of CoCos)
-    for (let i = 0; i < companies.length; i++) {
-      if (i < shuffledCocos.length) {
-        const coco = shuffledCocos[i];
-        const company = companies[i];
+    // Shuffle companies to distribute randomly
+    const shuffledCompanies = [...companies].sort(() => Math.random() - 0.5);
 
-        await Coordinator.findByIdAndUpdate(coco._id, {
+    for (const company of shuffledCompanies) {
+      const { day, slot } = company;
+
+      // Ensure day and slot exist
+      if (!day || !slot) {
+        unallottedCompanies.push({
+          id: company._id,
+          name: company.name,
+          day: day || "Unknown",
+          slot: slot || "Unknown",
+          reason: "Company missing Day/Slot"
+        });
+        continue;
+      }
+
+      // Step 1: Get available Co-Cos NOT used globally AND NOT in same day/slot
+      let available = cocos.filter(c => 
+        !usedCoCos.has(c._id.toString()) && 
+        !isAssignedInSameDaySlot(c._id.toString(), day, slot)
+      );
+
+      // Step 4: If unused list is empty, allow reuse but still enforce day/slot
+      if (available.length === 0) {
+        console.log(`[AutoAllocate] Reusing Co-Co after all exhausted for company ${company.name}`);
+        available = cocos.filter(c => 
+          !isAssignedInSameDaySlot(c._id.toString(), day, slot)
+        );
+      }
+
+      // Step 6: Randomly assign from available
+      if (available.length > 0) {
+        const selected = available[Math.floor(Math.random() * available.length)];
+        
+        usedCoCos.add(selected._id.toString());
+        cocoAssignments[selected._id.toString()].push({ day, slot });
+
+        // Execute DB writes
+        await Coordinator.findByIdAndUpdate(selected._id, {
           $addToSet: { assignedCompanies: company._id }
         });
         await Company.findByIdAndUpdate(company._id, {
-          $addToSet: { assignedCocos: coco._id }
+          $addToSet: { assignedCocos: selected._id }
         });
 
-        results.push({ company: company.name, coco: coco.name });
-        allocatedCompanies.push(company.name);
+        results.push({ company: company.name, coco: selected.name, day, slot });
       } else {
-        // More companies than cocos — these companies are unallotted
+        console.warn(`[AutoAllocate] No Co-Co available for company ${company.name} at Day ${day} Slot ${slot}`);
         unallottedCompanies.push({
-          id: companies[i]._id,
-          name: companies[i].name,
-          day: companies[i].day,
-          slot: companies[i].slot,
+          id: company._id,
+          name: company.name,
+          day,
+          slot,
+          reason: "No Co-Co available (Day/Slot conflict)"
         });
       }
     }
@@ -444,7 +481,7 @@ const autoAllocateCocos = async (req, res) => {
 
     if (unallottedCompanies.length > 0) {
       response.unallottedCompanies = unallottedCompanies;
-      response.warning = `${unallottedCompanies.length} company/companies could not be allotted due to insufficient CoCos. Check them under the unallotted companies list.`;
+      response.warning = `${unallottedCompanies.length} company/companies could not be allotted due to day/slot conflicts. Check them under the unallotted companies list.`;
     }
 
     res.json(response);

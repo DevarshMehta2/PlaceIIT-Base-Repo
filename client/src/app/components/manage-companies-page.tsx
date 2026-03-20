@@ -47,6 +47,7 @@ export function ManageCompaniesPage({ onCompanyClick }: ManageCompaniesPageProps
   const [filterDay, setFilterDay] = useState("all");
   const [filterSlot, setFilterSlot] = useState("all");
   const [isAddCompanyOpen, setIsAddCompanyOpen] = useState(false);
+  const [isUploadCompanyOpen, setIsUploadCompanyOpen] = useState(false);
   const [isAddStudentsOpen, setIsAddStudentsOpen] = useState(false);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
 
@@ -150,6 +151,7 @@ export function ManageCompaniesPage({ onCompanyClick }: ManageCompaniesPageProps
         toast.warning(`${res.errors.length} row(s) had issues. Check console for details.`);
         console.warn("Company Excel errors:", res.errors);
       }
+      setIsUploadCompanyOpen(false);
       await fetchCompanies();
     } catch (err: any) {
       toast.error(err.message ?? "Upload failed");
@@ -217,16 +219,34 @@ export function ManageCompaniesPage({ onCompanyClick }: ManageCompaniesPageProps
 
         <div className="flex gap-2">
           {/* Excel Upload for Companies */}
-          <div className="relative">
-            <input id="company-excel-upload" type="file" accept=".xlsx,.xls" onChange={handleExcelUpload} className="hidden" />
-            <Button
-              variant="outline"
-              className="flex items-center gap-2 h-11 border-gray-300"
-              onClick={() => document.getElementById("company-excel-upload")?.click()}
-            >
-              <Upload className="h-4 w-4" /> Upload Companies
-            </Button>
-          </div>
+          <Dialog open={isUploadCompanyOpen} onOpenChange={setIsUploadCompanyOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="flex items-center gap-2 h-11 border-gray-300">
+                <Upload className="h-4 w-4" /> Upload Companies
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Upload Companies Excel</DialogTitle>
+                <DialogDescription>
+                  Excel must have columns EXACTLY in this order:
+                  <br />
+                  <strong className="text-gray-900 mt-2 block">Company Name | Day | Slot | Venue</strong>
+                  <br />
+                  Example:
+                  <span className="font-mono text-xs bg-gray-100 p-2 block mt-1 rounded text-gray-800">
+                    Google | Day 1 | Morning | Seminar Hall A
+                  </span>
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col items-center justify-center py-6 gap-4">
+                <input id="company-excel-upload" type="file" accept=".xlsx,.xls" onChange={handleExcelUpload} className="hidden" />
+                <Button onClick={() => document.getElementById("company-excel-upload")?.click()} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
+                  <Upload className="h-4 w-4 mr-2" /> Select Excel File
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={isAddCompanyOpen} onOpenChange={setIsAddCompanyOpen}>
             <DialogTrigger asChild>

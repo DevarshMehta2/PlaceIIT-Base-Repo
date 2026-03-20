@@ -169,69 +169,28 @@ const getCocos = async (req, res) => {
   }
 };
 
+const { createCoco } = require("../services/coco.service");
+
 // @desc    Add a new CoCo (create user + coordinator)
 // @route   POST /api/admin/cocos
 const addCoco = async (req, res) => {
   try {
     const { name, email, rollNumber, contact } = req.body;
-    if (!name || !email || !rollNumber || !contact) return res.status(400).json({ message: "Name, Email, Roll Number, and Phone Number are required" });
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) return res.status(400).json({ message: "Invalid email format" });
-
-    // Validate phone number format (must be 10 digits)
-    const phoneRegex = /^\d{10}$/;
-    if (!phoneRegex.test(contact)) return res.status(400).json({ message: "Invalid phone number format (must be 10 digits)" });
-
-    const finalEmail = email.toLowerCase();
     
-    // Check if user already exists with this email or rollNumber
-    const existingEmail = await User.findOne({ email: finalEmail });
-    if (existingEmail) return res.status(400).json({ message: "User already exists with that email" });
-
-    const existingRoll = await Coordinator.findOne({ rollNumber });
-    if (existingRoll) return res.status(400).json({ message: "Coordinator already exists with that Roll Number" });
-
-    let nextX = await Coordinator.countDocuments() + 1;
-    let instituteId = `coco${nextX}`;
-    while (await User.exists({ instituteId })) {
-      nextX++;
-      instituteId = `coco${nextX}`;
-    }
-
-    const crypto = require("crypto");
-    const finalPassword = crypto.randomBytes(4).toString("hex");
-
-    const user = await User.create({
-      instituteId,
-      email: finalEmail,
-      password: finalPassword,
-      role: "coco",
-      mustChangePassword: true
-    });
-
-    const coco = await Coordinator.create({
-      userId: user._id,
-      name,
-      rollNumber,
-      contact,
-    });
-    
-    await emitStatsUpdate();
-
-    const { sendCocoWelcomeEmail } = require("../services/email.service");
     try {
-      await sendCocoWelcomeEmail(finalEmail, name, instituteId, finalPassword);
-    } catch (emailErr) {
-      console.error("[addCoco] Failed to send email:", emailErr);
-      // Don't fail the request if email fails, just notify the admin
-      return res.status(201).json({ message: "CoCo added successfully, but failed to send welcome email", coco, credentials: { instituteId, password: finalPassword } });
+      const result = await createCoco({ name, email, rollNumber, contact });
+      await emitStatsUpdate();
+      res.status(201).json({ message: "CoCo added successfully and invitation email sent", ...result });
+    } catch (err) {
+      if (err.message.includes("Account created successfully, but welcome email failed")) {
+         await emitStatsUpdate();
+         res.status(201).json({ message: err.message });
+      } else {
+         throw err;
+      }
     }
-
-    res.status(201).json({ message: "CoCo added successfully and invitation email sent", coco, credentials: { instituteId, password: finalPassword } });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(400).json({ message: err.message });
   }
 };
 

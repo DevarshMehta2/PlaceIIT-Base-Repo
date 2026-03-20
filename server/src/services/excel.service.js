@@ -7,6 +7,7 @@ const ExcelUpload = require("../models/ExcelUpload.model");
 
 const crypto = require("crypto");
 const { sendWelcomeEmail, sendCocoWelcomeEmail } = require("./email.service");
+const { createCoco } = require("./coco.service");
 
 const processCompanyExcel = async (uploadId, filePath) => {
   try {
@@ -84,7 +85,7 @@ const processCocoExcel = async (uploadId, filePath) => {
     let processed = 0;
     const problemList = [];
 
-    let nextX = await Coordinator.countDocuments() + 1;
+    console.log("Rows parsed:", rows.length);
 
     for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
@@ -98,56 +99,19 @@ const processCocoExcel = async (uploadId, filePath) => {
             continue; 
         }
 
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            problemList.push(`Row ${i+2}: Invalid email format`);
-            continue;
-        }
-
-        const phoneRegex = /^\d{10}$/;
-        if (!phoneRegex.test(phone)) {
-            problemList.push(`Row ${i+2}: Invalid phone number format (must be 10 digits)`);
-            continue;
-        }
-        
-        const existEmail = await User.findOne({ email });
-        if (existEmail) { problemList.push(`Row ${i+2}: User with Email ${email} already exists`); continue; }
-
-        const existRoll = await Coordinator.findOne({ rollNumber: roll });
-        if (existRoll) { problemList.push(`Row ${i+2}: Coordinator with Roll Number ${roll} already exists`); continue; }
-
-        let instituteId = `coco${nextX}`;
-        while (await User.exists({ instituteId })) {
-          nextX++;
-          instituteId = `coco${nextX}`;
-        }
-        nextX++;
-
-        const generatedPassword = crypto.randomBytes(4).toString("hex");
-
-        const user = await User.create({ 
-            instituteId, 
-            email, 
-            password: generatedPassword, 
-            role: "coco",
-            mustChangePassword: true
-        });
-
-        await Coordinator.create({ 
-            userId: user._id, 
-            name, 
-            rollNumber: roll,
-            contact: phone
-        });
+        console.log(`Processing Row ${i+2}:`, email);
 
         try {
-            await sendCocoWelcomeEmail(email, name, instituteId, generatedPassword);
+            await createCoco({ name, email, rollNumber: roll, contact: phone });
+            processed++;
         } catch (err) {
-            console.error("[processCocoExcel] Failed to send email to", email, err);
-            problemList.push(`Row ${i+2}: Account created but welcome email failed to send to ${email}`);
+            console.error(`[processCocoExcel] Error on Row ${i+2}:`, err.message);
+            problemList.push(`Row ${i+2}: ${err.message}`);
+            // If it partially succeeded but email failed, we can still count it
+            if (err.message.includes("Account created successfully")) {
+                processed++;
+            }
         }
-
-        processed++;
     }
     await ExcelUpload.findByIdAndUpdate(uploadId, { status: "success", recordsProcessed: processed, problemList });
     return { processed, problemList };

@@ -1,6 +1,6 @@
 /**
  * API Service Layer — centralised HTTP client for the PlaceIIT backend.
- * All requests go through the Vite proxy (/api → http://localhost:5001/api).
+ * All requests go through the Vite proxy (/api → http://localhost:5000/api).
  */
 
 const API_BASE = "/api";
@@ -187,6 +187,8 @@ export const cocoApi = {
         request("/coco/notifications"),
     markNotifRead: (id: string) =>
         request(`/coco/notifications/${id}/read`, { method: "PUT" }),
+    clearAllNotifications: () =>
+        request("/coco/notifications", { method: "DELETE" }),
     addPanel: (data: Record<string, unknown>) =>
         request("/coco/panel", { method: "POST", body: JSON.stringify(data) }),
     updatePanel: (panelId: string, data: Record<string, unknown>) =>

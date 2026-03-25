@@ -10,7 +10,7 @@ import {
 import {
   Building2, Users, UserPlus, Search, Phone, AlertCircle, CheckCircle,
   RotateCw, CircleDot, MapPin, XCircle, UserCheck, Loader2, Send, Edit,
-  Pencil, Mail, UserX
+  Pencil, Mail, UserX, Clock
 } from "lucide-react";
 import { cocoApi } from "@/app/lib/api";
 import { useSocket } from "@/app/socket-context";
@@ -193,10 +193,12 @@ export function CoCoHomePage({ companyName, onRoundTracking }: CoCoHomePageProps
     socket.on("queue:updated", handleUpdate);
     socket.on("status:updated", handleUpdate);
     socket.on("walkin:updated", handleUpdate);
+    socket.on("round:updated", handleUpdate);
     return () => {
       socket.off("queue:updated", handleUpdate);
       socket.off("status:updated", handleUpdate);
       socket.off("walkin:updated", handleUpdate);
+      socket.off("round:updated", handleUpdate);
     };
   }, [socket, company.id, fetchData]);
 
@@ -233,7 +235,21 @@ export function CoCoHomePage({ companyName, onRoundTracking }: CoCoHomePageProps
   };
 
   const handleUpdateStatus = async (studentId: string, newStatus: Student["status"]) => {
-    setStudents(prev => prev.map(s => s.id === studentId ? { ...s, status: newStatus } : s));
+    setStudents(prev => prev.map(s => {
+      if (s.id !== studentId) return s;
+      let locStatus = s.locationStatus;
+      if (newStatus === "in-queue") {
+        locStatus = s.currentCompany ? "in-queue" : "idle" as any;
+      } else if (newStatus === "in-interview") {
+        locStatus = s.currentCompany ? "in-interview" : "idle" as any;
+      } else if (newStatus === "completed") {
+        locStatus = "completed-day";
+      } else {
+        locStatus = "idle" as any;
+      }
+      return { ...s, status: newStatus, locationStatus: locStatus };
+    }));
+
     try {
       await cocoApi.updateStudentStatus({ studentId, companyId: company.id, status: newStatus });
       fetchData();
@@ -345,32 +361,29 @@ export function CoCoHomePage({ companyName, onRoundTracking }: CoCoHomePageProps
   const getLocationBadge = (locationStatus: Student["locationStatus"], currentCompany?: string) => {
     switch (locationStatus) {
       case "in-queue":
-        return (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <div className="flex items-center">
-              <MapPin className="h-4 w-4 text-blue-600 mr-2" />
-              <span className="text-sm font-medium text-blue-900">Waiting in {currentCompany}&apos;s queue</span>
+        if (currentCompany) {
+          return (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-center">
+                <MapPin className="h-4 w-4 text-blue-600 mr-2" />
+                <span className="text-sm font-medium text-blue-900">Waiting in {currentCompany}&apos;s queue</span>
+              </div>
             </div>
-          </div>
-        );
+          );
+        }
+        break;
       case "in-interview":
-        return (
-          <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-            <div className="flex items-center">
-              <CircleDot className="h-4 w-4 text-purple-600 mr-2 animate-pulse" />
-              <span className="text-sm font-medium text-purple-900">Getting interviewed at {currentCompany}</span>
+        if (currentCompany) {
+          return (
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+              <div className="flex items-center">
+                <CircleDot className="h-4 w-4 text-purple-600 mr-2 animate-pulse" />
+                <span className="text-sm font-medium text-purple-900">Getting interviewed at {currentCompany}</span>
+              </div>
             </div>
-          </div>
-        );
-      case "no-show":
-        return (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-            <div className="flex items-center">
-              <XCircle className="h-4 w-4 text-red-600 mr-2" />
-              <span className="text-sm font-medium text-red-900">Did not appear</span>
-            </div>
-          </div>
-        );
+          );
+        }
+        break;
       case "completed-day":
         return (
           <div className="bg-green-50 border border-green-200 rounded-lg p-3">
@@ -380,9 +393,16 @@ export function CoCoHomePage({ companyName, onRoundTracking }: CoCoHomePageProps
             </div>
           </div>
         );
-      default:
-        return null;
     }
+    // Default: Idle
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+        <div className="flex items-center">
+          <Clock className="h-4 w-4 text-gray-400 mr-2" />
+          <span className="text-sm font-medium text-gray-500">Idle — not currently assigned to any company.</span>
+        </div>
+      </div>
+    );
   };
 
   const filteredStudents = students.filter((student) => {
@@ -821,7 +841,7 @@ export function CoCoHomePage({ companyName, onRoundTracking }: CoCoHomePageProps
                   </div>
 
                   {/* Location status bar — full-width single-line pill */}
-                  {student.status !== "unassigned" && getLocationBadge(student.locationStatus, student.currentCompany)}
+                  {getLocationBadge(student.locationStatus, student.currentCompany)}
 
                   {/* Contact row */}
                   <div className="grid md:grid-cols-2 gap-3 text-sm">

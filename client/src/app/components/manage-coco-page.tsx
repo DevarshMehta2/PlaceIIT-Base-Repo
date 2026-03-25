@@ -26,6 +26,7 @@ import {
 } from "@/app/components/ui/select";
 import { adminApi } from "@/app/lib/api";
 import { toast } from "sonner";
+import { formatSlotLabel } from "@/app/lib/format";
 
 interface CoCo {
   id: string;
@@ -99,7 +100,7 @@ export function ManageCoCoPage({ onCoCoClick }: ManageCoCoPageProps) {
     id: raw._id ?? raw.id ?? "",
     name: raw.name ?? "—",
     day: raw.day != null ? `Day ${raw.day}` : "—",
-    slot: raw.slot ? raw.slot.charAt(0).toUpperCase() + raw.slot.slice(1) : "—",
+    slot: formatSlotLabel(raw.slot),
     venue: raw.venue ?? "Not Assigned",
   });
 
@@ -278,6 +279,14 @@ export function ManageCoCoPage({ onCoCoClick }: ManageCoCoPageProps) {
 
   const getAssignedCoCoId = (companyId: string) =>
     assignments.find((a) => a.companyId === companyId)?.cocoId || "";
+
+  const isCocoBusy = (cocoId: string, day: string, slot: string) => {
+    const cocoAssignments = assignments
+      .filter((a) => a.cocoId === cocoId)
+      .map((a) => companies.find((c) => c.id === a.companyId))
+      .filter((c): c is Company => c !== undefined);
+    return cocoAssignments.some((c) => c.day === day && c.slot === slot);
+  };
 
   const handleCoCoCardClick = (coco: CoCo) => {
     onCoCoClick({
@@ -598,11 +607,16 @@ export function ManageCoCoPage({ onCoCoClick }: ManageCoCoPageProps) {
                             <SelectValue placeholder="Select CoCo" />
                           </SelectTrigger>
                           <SelectContent>
-                            {cocos.map((coco) => (
-                              <SelectItem key={coco.id} value={coco.id}>
-                                {coco.name} {coco.instituteId ? `(${coco.instituteId})` : ""}
-                              </SelectItem>
-                            ))}
+                            {cocos.map((coco) => {
+                              const alreadyAssigned = isCocoBusy(coco.id, company.day, company.slot);
+                              const isCurrentAssignment = getAssignedCoCoId(company.id) === coco.id;
+                              const disabled = alreadyAssigned && !isCurrentAssignment;
+                              return (
+                                <SelectItem key={coco.id} value={coco.id} disabled={disabled}>
+                                  {coco.name} {coco.instituteId ? `(${coco.instituteId})` : ""} {disabled ? "(Busy)" : ""}
+                                </SelectItem>
+                              );
+                            })}
                           </SelectContent>
                         </Select>
                       </div>
